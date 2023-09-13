@@ -380,9 +380,9 @@ dockerd_start="AZURE_DNS_AUTO_DETECTION=${AZURE_DNS_AUTO_DETECTION} DOCKER_DEFAU
     fi
 
     # Mount /tmp (conditionally)
-    if ! mountpoint -q /tmp; then
-        mount -t tmpfs none /tmp
-    fi
+    # if ! mountpoint -q /tmp; then
+    #     mount -t tmpfs none /tmp
+    # fi
 
     set_cgroup_nesting()
     {

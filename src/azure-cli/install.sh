@@ -15,10 +15,10 @@ rm -rf /var/lib/apt/lists/*
 AZ_VERSION=${VERSION:-"latest"}
 AZ_EXTENSIONS=${EXTENSIONS}
 AZ_INSTALLBICEP=${INSTALLBICEP:-false}
-INSTALL_USING_PYTHON=${INSTALL_USING_PYTHON:-true}
+INSTALL_USING_PYTHON=${INSTALLUSINGPYTHON:-false}
 MICROSOFT_GPG_KEYS_URI="https://packages.microsoft.com/keys/microsoft.asc"
-AZCLI_ARCHIVE_ARCHITECTURES="amd64"
-AZCLI_ARCHIVE_VERSION_CODENAMES="stretch buster bullseye bionic focal jammy"
+AZCLI_ARCHIVE_ARCHITECTURES="amd64 arm64"
+AZCLI_ARCHIVE_VERSION_CODENAMES="stretch bookworm buster bullseye bionic focal jammy noble"
 
 if [ "$(id -u)" -ne 0 ]; then
     echo -e 'Script must be run as root. Use sudo, su, or add "USER root" to your Dockerfile before running this script.'
@@ -31,21 +31,6 @@ if [ -z "${_REMOTE_USER}" ]; then
 fi
 
 echo "Effective REMOTE_USER: ${_REMOTE_USER}"
-
-# Get central common setting
-get_common_setting() {
-    if [ "${common_settings_file_loaded}" != "true" ]; then
-        curl -sfL "https://aka.ms/vscode-dev-containers/script-library/settings.env" 2>/dev/null -o /tmp/vsdc-settings.env || echo "Could not download settings file. Skipping."
-        common_settings_file_loaded=true
-    fi
-    if [ -f "/tmp/vsdc-settings.env" ]; then
-        local multi_line=""
-        if [ "$2" = "true" ]; then multi_line="-z"; fi
-        local result="$(grep ${multi_line} -oP "$1=\"?\K[^\"]+" /tmp/vsdc-settings.env | tr -d '\0')"
-        if [ ! -z "${result}" ]; then declare -g $1="${result}"; fi
-    fi
-    echo "$1=${!1}"
-}
 
 apt_get_update()
 {
@@ -110,7 +95,6 @@ install_using_apt() {
     # Install dependencies
     check_packages apt-transport-https curl ca-certificates gnupg2 dirmngr
     # Import key safely (new 'signed-by' method rather than deprecated apt-key approach) and install
-    get_common_setting MICROSOFT_GPG_KEYS_URI
     curl -sSL ${MICROSOFT_GPG_KEYS_URI} | gpg --dearmor > /usr/share/keyrings/microsoft-archive-keyring.gpg
     echo "deb [arch=${architecture} signed-by=/usr/share/keyrings/microsoft-archive-keyring.gpg] https://packages.microsoft.com/repos/azure-cli/ ${VERSION_CODENAME} main" > /etc/apt/sources.list.d/azure-cli.list
     apt-get update
@@ -199,18 +183,20 @@ install_with_complete_python_installation() {
 
 export DEBIAN_FRONTEND=noninteractive
 
-# See if we're on x86_64 and if so, install via apt-get, otherwise use pip3
+# See if we're on x86_64 or AARCH64 and if so, install via apt-get, otherwise use pip3
 echo "(*) Installing Azure CLI..."
 . /etc/os-release
 architecture="$(dpkg --print-architecture)"
 CACHED_AZURE_VERSION="${AZ_VERSION}" # In case we need to fallback to pip and the apt path has modified the AZ_VERSION variable.
-if [[ "${AZCLI_ARCHIVE_ARCHITECTURES}" = *"${architecture}"* ]] && [[  "${AZCLI_ARCHIVE_VERSION_CODENAMES}" = *"${VERSION_CODENAME}"* ]]; then
-    install_using_apt || use_pip="true"
+if [ "${INSTALL_USING_PYTHON}" != "true" ]; then
+    if [[ "${AZCLI_ARCHIVE_ARCHITECTURES}" = *"${architecture}"* ]] && [[  "${AZCLI_ARCHIVE_VERSION_CODENAMES}" = *"${VERSION_CODENAME}"* ]]; then
+        install_using_apt || use_pip="true"
+    fi
 else
     use_pip="true"
 fi
 
-if [ "${use_pip}" = "true" ]; then
+if [ "${use_pip}" = "true" ]; then 
     AZ_VERSION=${CACHED_AZURE_VERSION}
     install_using_pip_strategy
 
